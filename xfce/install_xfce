@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+
+# https://wiki.archlinux.org/title/Xfce
+
+if [ $EUID -eq 0 ]; then echo -e "\e[91mA fájlt\e[101;93m NE root-ként \e[0m\e[91mfuttasd!\e[0m"; exit 1; fi
+
+sudo pacman -S --needed --noconfirm \
+	xfce4 xfce4-goodies lightdm lightdm-gtk-greeter lightdm-gtk-greeter-settings
+
+paru -S menulibre mugshot
+
+sudo systemctl enable lightdm.service
+sudo systemctl reboot

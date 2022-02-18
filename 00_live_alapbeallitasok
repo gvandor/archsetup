@@ -1,0 +1,12 @@
+#!/usr/bin/bash
+#Első lépés
+#	Magyar billentyűzet aktiválása
+#	Nagyobb betűtípus beállítása
+#	Idő szinkronizálás
+loadkeys hu
+setfont ter-v18b
+timedatectl set-ntp true
+echo -e "\e[94mMost el kell készítened a háttértárak partícióit, és azok fájlrendszerét.\e[0m"
+echo -e "\e[94mIndítsd el a 01_particiok scriptet a további információkért.\e[0m"
+echo -e "\e[94m(bash /archsetup/01_particiok)\e[0m"
+echo

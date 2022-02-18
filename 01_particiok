@@ -1,0 +1,36 @@
+#!/usr/bin/bash
+cat << TOBBSOROS
+ _____         _      __    _             
+|  _  |___ ___| |_   |  |  |_|___ _ _ _ _ 
+|     |  _|  _|   |  |  |__| |   | | |_'_|
+|__|__|_| |___|_|_|  |_____|_|_|_|___|_,_|
+
+Partíciók létrehozása
+A systemd-boot használata miatt a /boot könyvtárba kell csatolni egy FAT32-re formázott partíciót (minimum 320MB méret).
+Swap fájlt fogunk használni, ezért nem kell SWAP partíció.
+Ajánlott, sőt RENDKÍVÜL ajánlott egy külön partíció létrehozása a /home csatolási ponthoz.
+
+Használd az lsblk parancsot a meghajtók listázásához és beazonosításához!
+$→ lsblk -o NAME,MODEL,SIZE
+
+$→ cfdisk --zero /dev/sda
+GPT partíciós tábla
+Partíció1: 520MB - Típus: EFI System [/boot]
+Partíció2: 64GB - Típus: Linux Filesystem [/]
+Partíció3: 30GB - Típus: Linux Filesystem [/home]
+Kiírás, kilépés.
+
+Fájlrendszerek létrehozása a partíciókon.
+$→ mkfs.fat -F32 -n EFIBOOT /dev/sda1
+$→ mkfs.ext4 -L ARCHSYS /dev/sda2
+$→ mkfs.ext4 -L HOMEDIRS /dev/sda3
+
+Partíciók csatolása.
+$→ mount /dev/sda2 /mnt
+$→ mkdir -p /mnt/{boot,home}
+$→ mount /dev/sda1 /mnt/boot
+$→ mount /dev/sda2 /mnt/home
+TOBBSOROS
+echo
+echo "A meghajtóid:"
+lsblk -o NAME,MODEL,SIZE

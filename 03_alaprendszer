@@ -1,0 +1,42 @@
+#!/usr/bin/bash
+#Harmadik lépés
+#	Alaprendszer telepítése
+#	fstab generálása
+#	Belépés chroot környezetbe
+#	Újraindítási instrukciók
+
+# 4GB SWAP fájl létrehozása
+dd if=/dev/zero of=/mnt/swapfajl bs=1M count=4096 status=progress
+chmod -v 0600 /mnt/swapfajl
+mkswap /mnt/swapfajl
+swapon /mnt/swapfajl
+
+pacstrap /mnt base base-devel linux linux-headers linux-firmware dkms man-db man-pages texinfo usbutils reflector efibootmgr efivar efitools vim git mc
+
+genfstab -U /mnt >> /mnt/etc/fstab
+
+echo "GIT repó klónozása a chroot környezet /archsetup mappájába."
+git clone https://gitlab.com/SzzSHUN/archsetup.git /mnt/archsetup
+chmod +x /mnt/archsetup/0?_*
+
+echo -e "\e[94mMost belépünk a chroot környezetbe."
+echo -e "\e[92mA chroot környezetből történő kilépéshez gépeld be az exit parancsot, vagy nyomd le a CTRL+d billentyűkombinációt.\e[0m"
+read -n 1 -s -r -p "Nyomj le egy billentyűt a belépéshez...";echo
+
+#### BELÉPÉS A CHROOT KÖRNYEZETBE
+arch-chroot /mnt
+
+#### A chroot környezettől visszakaptuk az irányítást, folytatjuk eme szkript futtatását
+rm -rf /mnt/archsetup
+echo
+echo -e "\e[94mA telepítés folytatásához újra kell indítani a gépet a frissen telepített rendszerrel.\e[0m"
+echo -e "\e[92m→ swap kikapcsolása...\e[0m"
+swapoff -va
+
+echo -e "\e[92mFájlrendszerek leválasztása...\e[0m"
+cd / && umount -vR /mnt
+
+echo -e "\e[31m→ Most indítsd újra a számítógépet és jelentkezz be a normál felhasználóval."
+echo -e "Pélául így tutod ezt megtenni: \e[92msystemctl reboot"
+echo
+

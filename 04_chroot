@@ -1,0 +1,122 @@
+#!/usr/bin/bash
+#Negyedik lépés
+#A chroot környezetben futtatandó
+export PS1="(chroot) $PS1"
+
+#CPU típus meghatározása
+isAMD=$(cat /proc/cpuinfo | grep 'vendor' | uniq | awk -F':' '{ print $2}' | grep 'AMD')
+[ -z $isAMD ] && MICROCODE="intel-ucode" ||  MICROCODE="amd-ucode"
+
+#Időzóna beállítása
+ln -sf /usr/share/zoneinfo/Europe/Budapest /etc/localtime
+hwclock --systohc
+
+#Beállítjuk a használandó tükörszervereket
+reflector --verbose --age 5 --country HU,RO,PL --protocol http,https --latest 20 --sort country --save /etc/pacman.d/mirrorlist
+
+#További programok telepítése
+pacman -Syu --needed --noconfirm networkmanager terminus-font git bash-completion htop xdg-user-dirs xdg-utils $MICROCODE
+systemctl enable NetworkManager.service
+
+#Rendszer nyelvének beállítása.
+sed -i 's/^#\(en_US\|hu_HU\)\.UTF-8/\1.UTF-8/' /etc/locale.gen
+locale-gen
+
+#Magyar nyelv használatának előírása.
+echo "LANG=hu_HU.UTF-8" > /etc/locale.conf
+
+#Magyar billentyűzet és nagyobbacska betűtípus beállítása
+cat > /etc/vconsole.conf<<TOBBSOROS
+KEYMAP=hu
+FONT=ter-v14b
+TOBBSOROS
+
+#Hálózat konfiguráció
+echo "archlinux" > /etc/hostname
+#Létrehozzuk a hosts fájlt.
+#Feltételezem, hogy a gép DHCP-n keresztül kap IP címet a hálózaton.
+cat > /etc/hosts<<TOBBSOROS
+127.0.0.1    localhost
+::1          localhost
+127.0.1.1    archlinux.localdomain archlinux
+TOBBSOROS
+
+#Pacman színhasználatának bekapcsolása
+sed -i 's/^#Color/Color/' /etc/pacman.conf
+#A pacman többszálú letöltésének engedélyezése (pacman >= 6.0.0)
+sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf
+#A multilib tároló bekapcsolása a 32bites programok miatt
+sed -Ei '$!N;s/^#\[multilib\]\n#Include.*/[multilib]\nInclude = \/etc\/pacman.d\/mirrorlist/;P;D' /etc/pacman.conf
+pacman -Syu
+
+#Az mkinitcpio módosítása
+sed -i 's/^HOOKS=(\(.*\))/HOOKS=(\1 keymap consolefont)/' /etc/mkinitcpio.conf
+sed -i 's/^#COMPRESSION="zstd"/COMPRESSION="zstd"/' /etc/mkinitcpio.conf
+sed -i 's/^#COMPRESSION_OPTIONS=()/COMPRESSION_OPTIONS=(-T0)/' /etc/mkinitcpio.conf
+mkinitcpio -P
+
+#systemd-boot telepítése
+bootctl install
+cat > /boot/loader/loader.conf<<TOBBSOROS
+default arch-fresh.conf
+timeout 2
+console-mode max
+editor no
+TOBBSOROS
+
+# arch-fresh.conf fájl létrehozása
+# Kézzel kell ellenőrizned a fájlt, mert nem tudom, hogy sikerül-e meghatároznom, hogy mi annak a partíciónak az UUID azonosítója, ahol a rendszer gyökérkönyvtára van.
+# A blkid paranccsal kilistázhatod a meghajtók UUID azonosítóját és a fájlban cseréld le a UUID= után álló sorozatszámot a Te rendszerednek megfelelőre!
+ROOTDEVICE=$(findmnt -n / | sed 's/\s\{2,\}/ /g' | awk '{print $2}')
+ROOTUUID=$(blkid $ROOTDEVICE | awk '{print $3}' | sed 's/"//g')
+
+cat > /boot/loader/entries/arch-fresh.conf<<TOBBSOROS
+title Arch Linux
+linux /vmlinuz-linux
+initrd /${MICROCODE}.img
+initrd /initramfs-linux.img
+options root="${ROOTUUID}" rw
+TOBBSOROS
+
+#Az /etc/sudoers fájl módosítása, hogy a wheel csoport tagja használhassák a sudo-t
+sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+
+echo "A root felhasználó jelszavának beállítása:"
+passwd
+result=$?
+if (($result != 0)); then
+	echo -e "\e[1m\e[101m\e[97m A rendszergazda jelszavának beállítása sikertelen volt! \e[0m"
+	echo -e "A \e[7m passwd \e[0m parancs újbóli kiadásával pótold, mert nem tudsz majd bejelentkezni a \e[1mroot\e[0m felhasználóval!"
+fi
+
+echo -e "\e[94mNormál felhasználó létrehozása."
+echo "Üres név megadása esetén a létrehozás nem történik meg."
+echo -e "CSAK az angol ABC kisbetűit, és a számokat használhatod.\e[0m"
+read -p "Kérem a felhasználó bejelentkezési nevét: " normaluser
+if [ -n $normaluser ]; then
+	useradd -m -g users -G wheel,audio,video,storage,network,power,input $normaluser
+	result=$?
+	if (($result == 0)); then
+		echo "GIT repó klónozása a felhasználó könyvtárába..."
+		mkdir -p /home/${normaluser}/GIT
+		git clone https://gitlab.com/SzzSHUN/archsetup.git /home/${normaluser}/GIT/archsetup
+		chmod +x /home/${normaluser}/GIT/archsetup/0?_*
+		chown -R ${normaluser}. /home/${normaluser}
+		#Jelszó beállítása
+		echo "$normaluser jelszavának beállítása:"
+		passwd $normaluser
+		result=$?
+		if (($result != 0)); then
+			echo -e "A normál felhasználó jelszavának beállítása\e[1m\e[101m\e[97m sikertelen \e[0mvolt!"
+			echo -e "A \e[7m passwd $normaluser \e[0m parancs újbóli kiadásával pótold, mert nem tudsz majd bejelentkezni \e[1m$normaluser\e[0m felhasználóval!"
+		fi
+	else
+		echo -e "A normál felhasználó létrehozása\e[1m\e[101m\e[97m NEM \e[0msikerült!"
+	fi
+else
+	echo -e "\e[95mÜres felhasználó nevet adtál meg. A normál felhasználó létrehozása kihagyva.\e[0m"
+fi
+
+echo -e "Az archsetup repository klónozva lett a \e[92m/home/${normaluser}/GIT/archsetup\e[0m útvonalra a telepítés folytatásához újraindítást követően."
+echo -e "Most telepíthetsz további programokat, vagy az \e[7m exit \e[0m beírásával kiléphetsz a chroot környezetből."
+echo

@@ -1,0 +1,53 @@
+#!/usr/bin/bash
+
+#Ezt a scriptet sudo paranccsal futtasd!
+if [ $EUID -ne 0 ]; then echo -e "\e[91mA fájlt\e[101;93m root-ként \e[0m\e[91mfuttasd! (sudo $0)\e[0m"; exit 1; fi
+
+echo "VGA típus meghatározása..."
+videoController=$(lspci -v 2>/dev/null | grep 'VGA compatible controller')
+if [[ -n "$videoController" ]]; then
+	isNVIDIA=$(echo "$videoController" | grep -i 'NVIDIA')
+	isINTEL=$(echo "$videoController" | grep -i 'intel')
+	isAMD=$(echo "$videoController" | grep -i 'AMD')
+	isWMVirtual=$(echo "$videoController" | grep -i 'VMware')
+	isQVirtual=$(echo "$videoController" | grep -i 'QXL')
+	if [[ -n "$isNVIDIA" ]]; then GPUTYPE="nvidia"
+	elif [[ -n "$isINTEL" ]]; then GPUTYPE="intel"
+	elif [[ -n "$isAMD" ]]; then GPUTYPE="amd"
+	elif [[ -n "$isWMVirtual" ]]; then GPUTYPE="virtualVM"
+	elif [[ -n "$isQVirtual" ]]; then GPUTYPE="virtualQXL"
+	else GPUTYPE="<ismeretlen>"
+	fi
+else
+	videoController="<ismeretlen>"
+	GPUTYPE="<ismeretlen>"
+fi
+
+if [[ "$GPUTYPE" == "nvidia" ]]; then GPUPACKAGES="nvidia nvidia-lts nvidia-utils nvidia-settings nvidia-dkms"
+elif [[ "$GPUTYPE" == "intel" ]]; then GPUPACKAGES="xf86-video-intel"
+elif [[ "$GPUTYPE" == "amd" ]]; then GPUPACKAGES="xf86-video-amdgpu"
+elif [[ "$GPUTYPE" == "virtualVM" ]]; then GPUPACKAGES="xf86-video-vmware"
+elif [[ "$GPUTYPE" == "virtualQXL" ]]; then GPUPACKAGES="xf86-video-qxl"
+else GPUPACKAGES="xf86-video-fbdev"
+fi
+
+echo "PCI: $videoController"
+echo "Megtalált videó vezérlő: $GPUTYPE"
+echo "A videó vezérlőhöz az alábbi csomagok lesznek telepítve:"
+echo $GPUPACKAGES
+echo
+read -n 1 -s -r -p "Nyomj le egy billentyűt a folytatáshoz...";echo
+
+echo "Xorg csomagok telepítése"
+pacman -Syu --needed --noconfirm $GPUPACKAGES \
+	mesa mesa-demos xorg-server xorg-setxkbmap xorg-xkill xorg-xprop xorg-xrandr \
+	xorg-xrdb xorg-xset xorg-xsetroot xorg-xinit xorg-xauth xorg-sessreg \
+	xorg-xmodmap xterm libxkbcommon
+
+echo "Xorg billentyűzet magyarra állítása"
+localectl set-x11-keymap hu --no-convert
+
+if [[ "$GPUTYPE" == "nvidia" ]]; then
+	sed -i 's/^MODULES=()/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
+	mkinitcpio -P
+fi

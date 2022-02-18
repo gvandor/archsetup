@@ -1,0 +1,20 @@
+#!/usr/bin/bash
+#Ezt a fájlt ne root-ként futtasd!
+if [ $EUID -eq 0 ]; then echo -e "\e[91mA fájlt\e[101;93m NE root-ként \e[0m\e[91mfuttasd!\e[0m"; exit 1; fi
+
+echo "paru AUR kezelő telepítése"
+pushd ~
+git clone https://aur.archlinux.org/paru-bin
+cd ./paru-bin
+makepkg -si --needed --noconfirm
+popd
+echo "A paru forráskönyvtárának törlése"
+rm -rf ~/paru-bin
+
+echo "A paru konfiguráció létrehozása"
+mkdir -p ~/.config/paru
+cat > ~/.config/paru/paru.conf<<TOBBSOROS
+[options]
+SudoLoop
+SkipReview
+TOBBSOROS

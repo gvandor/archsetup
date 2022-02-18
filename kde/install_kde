@@ -1,0 +1,11 @@
+#!/usr/bin/bash
+
+# https://wiki.archlinux.org/title/KDE
+
+if [ $EUID -eq 0 ]; then echo -e "\e[91mA fájlt\e[101;93m NE root-ként \e[0m\e[91mfuttasd!\e[0m"; exit 1; fi
+
+sudo pacman -S --needed --noconfirm \
+	plasma kde-applications kde-gtk-config sddm sddm-kcm 
+
+sudo systemctl enable sddm.service
+sudo systemctl reboot

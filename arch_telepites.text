@@ -1,0 +1,389 @@
+Arch Linux telepítés
+==========2021.08.18.
+
+https://wiki.archlinux.org/title/Installation_guide
+https://gitlab.com/SzzSHUN/archsetup.git
+
+A parancsot tartalmazó sorok jelölése: $❯
+Kapcsolódó bash script jelölése: ↳$
+A live rendszer root felhasználó bevében fut, ezért nincs sudo használat a parancsoknál.
+
+Első fázis
+==========	↳$ 00_live_alapbeallitasok
+
+Billentyűzet beállítása a Live rendszer indulását követően, magyarra.
+A parancs beírásakkor figyelj oda, hogy a 'z' és az 'y' billentyű fel van cserélve.
+$❯ loadkeys hu
+
+Beállítunk egy kicsit nagyobb betűtípust (Terminus 18 Bold)
+$❯ setfont ter-v18b
+
+A beállítható betűtípusokat listázhatod:
+$❯ ls /usr/share/kbd/consolefonts | less
+(A less parancsból kilépés a q (kis Q) billentyű lenyomásával lehetséges)
+
+Rendszeridő frissítése NTP szerverről.
+$❯ timedatectl set-ntp true
+
+Ahhoz, hogy jelen leírás és a kapcsoldó szkriptek használhatóak legyenek, a live rendszerben leklónozzuk azt.
+pacman -Syu --needed git
+git clone -v https://gitlab.com/SzzSHUN/archsetup.git /archsetup
+
+Második fázis
+============= ↳$ 01_particiok
+Partíciók létrehozása
+A systemd-boot használata miatt a /boot könyvtárba kell csatolni egy FAT32-re formázott partíciót (minimum 320MB méret).
+Swap fájlt fogunk használni, ezért nem kell SWAP partíció.
+Ajánlott, sőt RENDKÍVÜL ajánlott egy külön partíció létrehozása a /home csatolási ponthoz.
+(Újra telepítést nagyban megkönnyíti, nem kell a saját fájljainkat külön elmenteni külső adathordozóra)
+
+Például egy 128GB méretű SSD-t használva:
+Figyelj arra, hogy a háttértár elérési útja a Te rendszeredben lehet más, mint a példában használt /dev/sda!
+Használd az lsblk parancsot a meghajtók listázásához és beazonosításához!
+$❯ lsblk -o NAME,MODEL,SIZE
+
+$❯ cfdisk --zero /dev/sda
+GPT partíciós tábla
+Partíció1: 320MB - Típus: EFI System [/boot]
+Partíció2: 64GB - Típus: Linux Filesystem [/]
+Partíció3: 52108M - Típus: Linux Filesystem [/home]
+	Megjegyzés: SSD esetében érdemes a tároló kapacitásának 10%-át üresen hagyni.
+Kiírás, kilépés.
+A cfdisk használatánál ügyelj arra, hogy a kiírásnál nem elég a szokásos 'y' lenyomása. Szépen be kell írni, hogy 'yes'!
+
+Fájlrendszerek létrehozása a partíciókon.
+$❯ mkfs.fat -F32 -n EFIBOOT /dev/sda1
+$❯ mkfs.ext4 -L ARCHSYS /dev/sda2
+$❯ mkfs.ext4 -L HOMEDIRS /dev/sda3
+
+Partíciók csatolása. (A sorrend fontos!)
+Először csatoljuk a gyökérkönyvtárat az /mnt mappába
+$❯ mount /dev/sda2 /mnt
+Létrehozzuk a boot és a home könyvtárakat a telepítendő rendszer gyökérkönyvtárán belül.
+$❯ mkdir -p /mnt/{boot,home}
+Becsatoljuk a boot és a home könyvtárakat, az imént létrehozott alkönyvtárakba
+$❯ mount /dev/sda1 /mnt/boot
+$❯ mount /dev/sda2 /mnt/home
+
+Most már készen áll a könyvtár struktúra, jöhet az alaprendszer telepítése.
+
+Harmadik fázis - Alap rendszer összetevők telepítése
+==================================================== ↳$ 03_alaprendszer
+A SWAP fájl mérete használati mód és rendszerfüggő.
+Laptopok esetében ajánlott a memória méretével megegyező méretű swap területet létrehozni, hogy hibernáláskor ki tudja írni a memória tartalmát a lemezre.
+Általában mindenki a laptop szabályt ajánlja, ha nem laptobra telepítesz, 8GB és annál nagyobb rendszereknél fölösleges 4GB-nál nagyobb swap tárolót létrehozni tapasztalatom szerint, persze ilyenkor értelemszerűen nem szabad használni a hibernálás semmilyen formáját.
+
+4GB Swapfájl létrehozása és bekapcsolása
+$❯ dd if=/dev/zero of=/mnt/swapfajl bs=1M count=4096 status=progress
+$❯ chmod -v 0600 /mnt/swapfajl
+$❯ mkswap /mnt/swapfajl
+$❯ swapon /mnt/swapfajl
+A sikeres aktiválást lekérdezhetjük a swapon parancs kiadásával.
+
+Alap rendszer telepítése.
+$❯ pacstrap /mnt base base-devel linux linux-lts linux-headers linux-lts-headers linux-firmware dkms man-db man-pages texinfo usbutils reflector efibootmgr efivar efitools vim mc
+
+Módosítjuk az fstab fájlt a rendszer csatolásaival.
+$❯ genfstab -U /mnt >> /mnt/etc/fstab
+
+Belépés a frissen telepített alaprendszerbe és további programok telepítése.
+$❯ arch-chroot /mnt
+
+Negyedik fázis - Beállítások a chroot környezetben
+================================================== ↳$ 04_chroot
+Időzóna beállítása
+$❯ ln -sf /usr/share/zoneinfo/Europe/Budapest /etc/localtime
+$❯ hwclock --systohc
+
+Beállítjuk a használandó tükörszervereket
+Lekérünk 30 szervert, amik az elmúlt 5 órában frissültek, HTTP vagy HTTPS protokolt használnak és Magyarországon, vagy a szomszédban vannak.
+$❯ reflector --verbose --age 5 --country HU,CZ,RO,PL --protocol http,https --latest 30 --sort country --save /etc/pacman.d/mirrorlist
+
+További programok telepítése
+$❯ pacman -Syu --needed --noconfirm networkmanager terminus-font git bash-completion htop xdg-user-dirs xdg-utils
+
+Processzortól függően telepítendő csomag:
+AMD:
+pacman -S  amd-ucode
+Intel:
+pacman -S  intel-ucode
+
+Rendszer nyelvének beállítása.
+Érdemes mind a magyar, mind az angol nyelvet engedélyezni.
+Fájl szerkesztése helyett ismét a sed programot használjuk.
+$❯ sed -i 's/^#\(en_US\|hu_HU\)\.UTF-8/\1.UTF-8/' /etc/locale.gen
+$❯ locale-gen
+
+Magyar nyelv használatának előírása.
+$❯ echo "LANG=hu_HU.UTF-8" > /etc/locale.conf
+
+Magyar billentyűzet és nagyobbacska betűtípus beállítása
+$❯ cat > /etc/vconsole.conf<<TOBBSOROS
+KEYMAP=hu
+FONT=ter-v14n
+TOBBSOROS
+
+Hálózat konfiguráció
+Adjuk meg a gép nevét (Angol ABC kisbetűi és számok)
+$❯ echo "mydesktop" > /etc/hostname
+
+Létrehozzuk a hosts fájlt.
+Feltételezem, hogy a gép DHCP-n keresztül kap IP címet a hálózaton.
+$❯ cat > /etc/hosts<<TOBBSOROS
+127.0.0.1    localhost
+::1          localhost
+127.0.1.1    mydesktop.localdomain mydesktop
+TOBBSOROS
+
+A pacman beállításainak módosítása.
+Színezés bekapcsolása:
+$❯ sed -i 's/^#Color/Color/' /etc/pacman.conf
+A pacman többszálú letöltésének engedélyezése (pacman >= 6.0.0)
+$❯ sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf
+
+Módosítjuk az mkinitcpio beállításait
+Az alapértelmezett HOOKS sort írjuk át
+HOOKS="base udev autodetect modconf block filesystems keyboard fsck"
+erre
+HOOKS="base udev autodetect modconf block filesystems keyboard keymap consolefont fsck"
+Így már a rendszer indulásakor magyar billentyűzet lesz és nagyobb terminál font (a vconsole.conf szerint)
+$❯ sed -i 's/^HOOKS=(\(.*\))/HOOKS=(\1 keymap consolefont)' /etc/mkinitcpio.conf
+Módosítjuk a tömörítést is. Beállítjuk a jelenleg alapértelmezett tömörítést és azt, hogy a CPU összes magját használja.
+$❯ sed -i 's/^#COMPRESSION="zstd"/COMPRESSION="zstd"/' /etc/mkinitcpio.conf
+$❯ sed -i 's/^#COMPRESSION_OPTIONS=()/COMPRESSION_OPTIONS=(-T0)/' /etc/mkinitcpio.conf
+Ezekután generáljuk az indítási binárisokat.
+$❯ mkinitcpio -P
+
+A systemd-boot telepítése, beállítása
+$❯ bootctl install
+$❯ cat > /boot/loader/loader.conf<<TOBBSOROS
+default arch-fresh.conf
+timeout 3
+console-mode max
+editor yes
+TOBBSOROS
+
+Ha nem AMD processzorod van, akkor az 'amd-ucode.img'-t cseréld le 'intel-ucode.img'-re!
+Az UUID azonosítót cseréld le a Te rendszerednek megfelelőre! (blkid)
+A legfrissebb kernel  menüje:
+$❯ cat > /boot/loader/entries/arch-fresh.conf<<TOBBSOROS
+title Arch Linux
+linux /vmlinuz-linux
+initrd /amd-ucode.img
+initrd /initramfs-linux.img
+options root="UUID=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" rw
+TOBBSOROS
+
+Az LTS kernel  menüje:
+$❯ cat > /boot/loader/entries/arch-lts.conf<<TOBBSOROS
+title Arch Linux LTS
+linux /vmlinuz-linux-lts
+initrd /amd-ucode.img
+initrd /initramfs-linux-lts.img
+options root="UUID=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" rw
+TOBBSOROS
+
+Az /etc/sudoers fájl módosítása, hogy a wheel csoport tagja használhassák a sudo-t
+$❯ EDITOR=vim visudo
+(Ha a vim bonyolult Neked, akkor az EDITOR környezeti változó értékének a nano programot add meg!)
+Keresd meg a következő sort és szedd ki előle a # jelet
+# %wheel ALL=(ALL) ALL
+vagy...
+$❯ sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
+
+Normál felhasználó létrehozása és jelszavának beállítása
+A felhasználó nevében csak az angol ABC kisbetűi és a számok használhatóak.
+Lehetőség van a '_' karakter használatára is, de az nem lehet az első, vagy az utolsó karakter a névben.
+
+$❯ $FELHASZNALO="archuser"
+$❯ useradd -m -g users -G wheel,audio,video,storage,network,power,input $FELHASZNALO
+$❯ passwd $FELHASZNALO
+
+Állítsuk be újraindítás előtt a root jelszavát.
+$❯ passwd
+
+A telepítés folytatásához újra kell indítani a gépet a frissen telepített rendszerrel.
+Előbb lépj ki a chroot környezetből a CTRL+d lenyomásával, vagy az exit parancssal.
+Kikapcsoljuk a swap fájlt.
+$❯ swapoff -va
+Lecsatoljuk a fájlrendszereket.
+$❯ umount -vR /mnt
+
+Újraindítás
+$❯ systemctl reboot
+
+
+Az alap rendszer elkészült.
+Következik az AUR helper és az X11 szerver telepítése.
+
+Újraindítás után jelentkezz be a normál felhasználóval.
+
+AUR helper
+========== ↳$ 05_aurhelper
+
+A parancsokat (a 05_aurhelper-re is vonatkozik!) normál jogú felhasználóval kell futtatni.
+Belépünk a felhasználó home könyvtárába
+$❯ cd
+Klónozzuk a csomagot:
+$❯ git clone https://aur.archlinux.org/paru-bin
+Belépünk a paru könyvtárába:
+$❯ cd ~/paru-bin
+Telepítjük a csomagot:
+$❯ makepkg -si --needed --noconfirm
+Most megbizonyosodhatunk a működéséről azáltal, hogy AUR frissítéseket keresünk (természetesen nem lesz):
+$❯ paru -Syua
+Ha minden rendben van, akkor törölhetjük is a paru-bin könyvtárát.
+Először visszalépünk a felhasználó home könyvtárának gyökerébe:
+$❯ cd
+Majd töröljük a paru-bin alkönyvtárat:
+$❯ rm -rf ~/paru-bin
+
+Xorg
+==== ↳$ 06_xorg
+
+A xorg telepítése:
+$❯ sudo pacman -Syu --needed xorg xorg-apps xorg-xinit xterm rxvt-unicode mesa
+
+Videókártya driver telepítése.
+A rendszerben lévő videó kártya típusát az alábbi paranccsal tudod lekérdezni:
+$❯ lspci -v 2>/dev/null | grep "VGA compatible controller"
+
+NVIDIA driver telepítése:
+$❯ sudo pacman -Syu --needed nvidia nvidia-utils nvidia-settings nvidia-dkms
+Mivel nekem NVidia kártyám van, ezért ennél el tudom mondani, hogy érdemes szerkeszteni az /etc/mkinitcpio.conf fájlt és beírni az nvidia hivatkozásokat:
+MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
+Az mkinitcpio.conf fájlba írt változások miatt újra generáljuk a binárisokat:
+$❯ sudo mkinitcpio -P
+
+AMD driver telepítése
+$❯ sudo pacman -Syu --needed xf86-video-amdgpu
+
+Intel driver telepítése
+$❯ sudo pacman -Syu --needed xf86-video-intel
+
+A localectl segítségével beállítjuk, hogy az X11 grafikus felületen is magyar billentyűzetet használunk.
+$❯ sudo localectl set-x11-keymap hu --no-convert
+
+Segédprogramok
+============== ↳$ 07_utils
+Ezt a szakaszt, mivel telepítünk az AUR tárolóból is, a parancsokat nem szabad root-ként kiadni!
+Most telepítünk néhány hasznos segédprogramot, témát, ikon készletet.
+$❯ sudo pacman -Syu --needed --noconfirm \
+    arc-gtk-theme arc-icon-theme archlinux-wallpaper avahi \
+    capitaine-cursors cups cups-pdf curl exa firefox firefox-i18n-hu \
+    galculator gucharmap gvfs gvfs-gphoto2 gvfs-mtp hicolor-icon-theme \
+    icoutils lib32-libxcursor libnfs libnotify libxcursor most nfs-utils \
+    nfsidmap noto-fonts-emoji numlockx p7zip \
+    pamixer paprefs pasystray pavucontrol polkit pulseaudio pulsemixer \
+    python-certifi python-gobject python-keyutils python-pyaml \
+    python-requests python-watchdog rsync smplayer system-config-printer \
+    thunderbird thunderbird-i18n-hu ttf-dejavu ttf-nerd-fonts-symbols \
+    ttf-ubuntu-font-family udiskie udisks2 unarj unrar vlc volumeicon \
+    wget xarchiver xcb-util-cursor xcursor-themes xorg-xcursorgen zip \
+    xdotool neofetch
+
+$❯ paru -S --needed --noconfirm inxi nerd-fonts-dejavu-complete nerd-fonts-ubuntu-mono noto-color-emoji-fontconfig
+
+Ha Windows játékokat is szeretnénk futtani:
+$❯ sudo pacman -S --needed steam steam-native-runtime
+$❯ paru -S --needed wine winetricks dxvk-bin lutris mangohud lib32-mangohud gamemode lib32-gamemode protontricks
+
+PDF nyomtató telepítése, a kimeneti könyvtár beállítása
+$❯ sudo sed -i 's/^Out \/var\/spool\/cups-pdf\/${USER}/Out ${HOME}\/PDF-printer/' /etc/cups/cups-pdf.conf
+$❯ sudo lpadmin -p cups-pdf -v cups-pdf:/ -D "PDF nyomtató" -L "$(hostnamectl hostname)" -o printer-is-shared=false -E -P /usr/share/ppd/cups-pdf/Generic-PDF_Printer-PDF.ppd
+
+Szolgáltatások engedélyezése
+$❯ sudo systemctl enable cups.socket avahi-daemon.socket
+
+A pacman csomagkezelőben van egy lehetőség, amivel egy program nevét megadva megkereshetjük, hogy melyik csomag tartalmazza azt.
+Ez az -F kapcsoló. Első használatot megelőzően, majd később csomaglista változások esetén le kell futtani az alábbi parancsot:
+$❯ sudo pacman -Fy
+Ezután használhatjuk például arra, hogy megtudjuk, az xinit program a xorg-xinit csomagban található:
+$❯ pacman -F xinit
+Eredménye:
+extra/xorg-xinit 1.4.1-3 [telepítve]
+    usr/bin/xinit
+
+Eztkövetően indítsd újra a gépet és jelentkezz be a normál felhasználói fiókkal.
+Az alaprendszer telepítése befejeződött.
+
+===========================================================================
+Mostmár tényleg van egy alaprendszerünk, de még nincs grafikus környezetünk.
+Mivel rengeteg lehetőség áll rendelkezésre így a továbbiakban csak néhányat írok le.
+Elmondható, hogy szükség van még:
+	-Display Manager (Grafikus bejelentkezés kezelő) *ez nem feltétlenül szükséges*
+	-Window Manager (Ablakkezelő)
+        vagy
+    -Desktop Environment (Asztali környezet)
+telepítésére.
+Előre el kell döntened, hogy mikét akarod használni a rendszered.
+Komplett asztali környezetet telepítesz annak minden sallangjával, vagy csak egy ablak kezelőt, amit viszont Neked kell teljes mértékben testreszabni.
+
+Desktop Environment
+===================
+https://wiki.archlinux.org/title/Desktop_environment
+Számos előre konfigurált asztali környezet áll rendelkezésedre.
+XFCE,GNOME,KDE,Deepen,LXQT...
+Elmondható, hogy az ablak kezelőkkel ellentétben az asztali környezetek nem igazán szeretik, ha több féle van telepítve belőlük a gépen.
+Több könyvtárat közösen használnak, ami összekavarhatja szegényeket.
+Ilyen például a ~/.config/autostart könyvtár, ahol a bejelentkezést követően automatikusan elindítandó programok desktop fájljai vannak.
+Galibát tud okozni, ha mondjuk egy a GNOME sztali környezethez való indítási bejegyzést a KDE asztali környezet megpróbál betölteni.
+És ez csak egy példa. Számos fájl és könyvtár van, ami problémát okozhat. Éppen ezért ajánlott csak egy DE telepítése.
+Személyes kedvencem az XFCE, így álljon most itt ennek telepítése: ↳$ ./xfce/install_xfce
+$❯ sudo pacman -S --needed --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter lightdm-gtk-greeter-settings
+
+Window Manager
+==============
+https://wiki.archlinux.org/title/Window_manager
+Ha túl sok neked a rendelkezésredre álló asztali környezetek száma, akkor el fogsz szörnyűlködni, hogy mennyi ablak kezelő létezik. :-)
+Csak néhány az ismertebbek közül:
+-Enlightenment
+-Openbox
+-Compiz
+-i3
+-Xmonad
+-Qtile
+Ezek telepítése és konfigurálása mindenesetben eltérő és az ArchWiki olvasgatását tudom ajánlani.
+
+Példákban mi az Openbox-ot fogjuk telepíteni és konfigurálni.  ↳$ ./openbox/install_openbox
+Telepítsük a csomagokat:
+$❯ pacman -S --needed --noconfirm openbox obconf archlinux-xdg-menu lxappearance-gtk3 lxterminal pcmanfm-gtk3 nitrogen dunst
+$❯ xdg_menu --format openbox3 --root-menu /etc/xdg/menus/arch-applications.menu > ~/.config/openbox/xdg-menu.xml
+
+
+Display Manager
+===============
+*** Ha nincs szükséged grafikus bejelentkezés kezelőre ***
+Indításkor a bejelentkezési prompt fog elindulni, ahová begépelve felhasználó nevedet, majd jelszavadt egy terminalt kapsz.
+Innen indíthatod a grafikus környezetet kézzel. Természetesen meg van annak lehetősége, hogy a grafikus környezet indítását automatizáld a home könyvtáradban található .profile fájl szerkesztésével. Eme fájl neve egyes shell programok esetében eltérő lehet. Mi a bash shell-t telepítettük, így a .bash_profile fájlba beírva az indítási parancsot tudjuk a bejelentkezést követően elindítani a grafikus környezetet. Ehhez szükségünk lesz még a home könyvárunkban egy .xinitrc nevű fájlra is, ami a tulajdonképpeni indítást végzi el.
+A mi példánknál maradva módosítsuk a ~/.bash_profile fájlt.
+A fájl végére írjuk be a következő sorokat:
+if [[ -z $DISPLAY ]] && [[ $(tty) = /dev/tty1 ]]; then exec startx; fi
+A fájl mentését követően, ha bejelentkezünk az 1-es terminálon (tty1), elindul az X server és meghívja a .xinitrc fájlunkat, amiben az indítási parancsok vannak felsorolva. A DISPLAY környezeti változó nincs definiálva addig, amíg az X szerver el nem indul. Ezt vizsgáljuk a sor elején, hogy ne indítsuk el az X szervert minden egyes terminál megnyitáskor a grafikus környezetben.
+
+*** Ha szükséged van grafikus bejelentkezés kezelőre ***
+https://wiki.archlinux.org/title/Display_manager
+Ha asztali környezetet telepítesz magadnak, akkor az adott környezettől függ, hogy melyik displaymanager-t szereti:
+XFCE -> lightdm
+GNOME -> gdm
+KDE -> sddm
+LXDE -> lxdm
+A kiválasztott környezetnek megfelelőt érdemes telepíteni.
+
+Ha csak ablakkezelőt telepítesz és szükséged van grafikus bejelentkezés kezelőre, akkor a lightdm-et ajánlom.
+Ennek telepítése:
+$❯ sudo pacman -S --needed --noconfirm lightdm lightdm-gtk-greeter lightdm-gtk-greeter-settings
+
+Arch linux alatt a telepített szolgáltatások nem engedélyezettek alapból, így a lightdm sem indul el automatikusan.
+Ahhoz, hogy elinduljon engedélyezned kell:
+$❯ sudo systemctl enable lightdm.service
+Ezután az újraindítást követően el fog indulni a grafikus bejelentkezés, de ezt addig fölösleges megtenni, míg nincs telepítve asztali környezet vagy ablak kezelő!
+
+Ne feledd! Ha valami nem tiszta, vagy csak kíváncsi vagy a rendszer összetevőinek működésére, akkor használd bátran az Arch Wiki-t!
+https://wiki.archlinux.org/
+
+Sok program, illetve rendszer összetevő manuálját is megkeresheted az Arch Manual oldalain:
+https://man.archlinux.org/
+
+
+*** SOK SIKERT ÉS ÖRÖMTELI ARCH LINUX HASZNÁLATOT KÍVÁNOK! ***

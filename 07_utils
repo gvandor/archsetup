@@ -1,0 +1,50 @@
+#!/usr/bin/bash
+
+#A fájlt NE root-ként futtasd!
+if [ $EUID -eq 0 ]; then echo -e "\e[91mA fájlt\e[101;93m NE root-ként \e[0m\e[91mfuttasd!\e[0m"; exit 1; fi
+
+echo "Segédprogramok, betűtípusok, GTK téma és ikon készlet telepítése..."
+sudo pacman -Syu --needed --noconfirm \
+	archlinux-wallpaper avahi highlight\
+	capitaine-cursors cups cups-pdf curl exa hicolor-icon-theme \
+	icoutils lib32-libxcursor libnfs libnotify libxcursor most nfs-utils \
+	nfsidmap noto-fonts-emoji numlockx p7zip \
+	rsync system-config-printer ttf-dejavu ttf-ubuntu-font-family ttf-jetbrains-mono \
+	udiskie udisks2 wget xcb-util-cursor xcursor-themes xorg-xcursorgen zip xdotool neofetch \
+	ranger libreoffice-fresh libreoffice-fresh-hu speedcrunch flameshot \
+	vivaldi vivaldi-ffmpeg-codecs thunderbird thunderbird-i18n-hu
+
+paru -S --needed --noconfirm inxi noto-color-emoji-fontconfig
+
+#echo "Gaming..."
+#sudo pacman -S --needed --noconfirm steam-native-runtime 
+#paru -S --needed --noconfirm wine winetricks dxvk-bin lutris mangohud lib32-mangohud gamemode lib32-gamemode protontricks
+
+#Szolgáltatások engedélyezése
+sudo systemctl enable --now cups.service avahi-daemon.service
+
+#PDF nyomtató telepítése
+sudo sed -i 's/^#Out \/var\/spool\/cups-pdf\/${USER}/Out ${HOME}\/PDF-printer/' /etc/cups/cups-pdf.conf
+sudo lpadmin -p "PDF_Nyomtató" -v cups-pdf:/ -D "PDF nyomtató" -L "Ez a gép" -o printer-is-shared=false -m CUPS-PDF_opt.ppd  -E
+
+sudo pacman -Fy
+
+#bash_aliases fájl létrehozása és a bashrc módosítása
+cat > ~/.bash_aliases<<TOBBSOROS
+alias chmod='chmod -v'
+alias cp='cp -v'
+alias drivelist='lsblk -o name,size,label,fstype,model'
+alias fut-e='ps ax | egrep -v "grep \-E" | egrep'
+alias grep='grep --color=auto'
+alias hcat='highlight -O ansi'
+alias less='less -RgMn'
+alias ln='ln -fv'
+alias ls='exa -Fgm --time-style="long-iso" --icons --group-directories-first'
+alias most='most -rw'
+alias mv='mv -v'
+TOBBSOROS
+
+echo -e "\n\n[[ -r ~/.bash_aliases ]] && . ~/.bash_aliases" >> ~/.bashrc
+
+#QT5STR="QT_QPA_PLATFORMTHEME=qt5ct"
+#echo -e "${QT5STR}\n" | sudo tee /etc/profile.d/qt-hack.sh

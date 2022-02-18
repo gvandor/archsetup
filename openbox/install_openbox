@@ -1,0 +1,84 @@
+#!/usr/bin/bash
+
+# https://wiki.archlinux.org/title/Openbox
+
+if [ $EUID -eq 0 ]; then echo -e "\e[91mA fájlt\e[101;93m NE root-ként \e[0m\e[91mfuttasd!\e[0m"; exit 1; fi
+
+sudo pacman -S --needed --noconfirm \
+	openbox obconf arandr archlinux-xdg-menu lxappearance-gtk3 \
+	lxterminal pcmanfm-gtk3 nitrogen dunst lightdm lightdm-gtk-greeter lightdm-gtk-greeter-settings \
+	polkit-gnome tint2 picom geany libreoffice-still libreoffice-still-hu evince viewnior
+
+mkdir -p ~/.config/openbox
+touch ~/.config/openbox/autostart.sh
+echo "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &" >> ~/.config/openbox/autostart.sh
+echo "picom --experimental-backends -b" >> ~/.config/openbox/autostart.sh
+echo "nitrogen --restore" >> ~/.config/openbox/autostart.sh
+echo "dunst &" >> ~/.config/openbox/autostart.sh
+echo "pasystray &" >> ~/.config/openbox/autostart.sh
+echo "tint2 &" >> ~/.config/openbox/autostart.sh
+
+#A jobb egérgombos menű létrehozása
+cat > ~/.config/openbox/menu.xml<<TOBBSOROS
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+<menu id="root-menu" label="Openbox 3">
+	<menu id="applications" label="Programok" execute="xdg_menu --format openbox3-pipe --root-menu /etc/xdg/menus/arch-applications.menu" />
+	<menu id="settings" label="Beállítások">
+		<item label="Megjelenés (lxappearance)">
+			<action name="Execute">
+				<command>lxappearance</command>
+			</action>
+		</item>
+		<item label="Megjelenés (obconf)">
+			<action name="Execute">
+				<command>obconf</command>
+			</action>
+		</item>
+		<item label="Bejelentkezési képernyő konfigurálása">
+			<action name="Execute">
+				<command>lightdm-gtk-greeter-settings-pkexec</command>
+			</action>
+		</item>
+		<item label="Nyomtatók konfigurálása">
+			<action name="Execute">
+				<command>system-config-printer</command>
+			</action>
+		</item>
+		<item label="Képernyő">
+			<action name="Execute">
+				<command>arandr</command>
+			</action>
+		</item>
+		<item label="Openbox kononfiguráció újratöltése">
+			<action name="Reconfigure"/>
+		</item>
+	</menu>
+	<separator label="Rendszer" />
+	<item label="Kijelentkezés">
+		<action name="Exit">
+			<prompt>yes</prompt>
+		</action>
+	</item>
+	<item label="Újraindítás">
+		<action name="Execute">
+			<command>systemctl reboot</command>
+			<prompt>Újraindítod a gépet?</prompt>
+		</action>
+	</item>
+	<item label="Kikapcsolás">
+		<action name="Execute">
+			<command>systemctl poweroff</command>
+			<prompt>Kikapcsolod a gépet?</prompt>
+		</action>
+	</item>
+</menu>
+</openbox_menu>
+
+TOBBSOROS
+
+mkdir -p ~/.config/picom
+cp /etc/xdg/picom.conf ~/.config/picom/
+
+sudo systemctl enable lightdm.service
+sudo systemctl reboot
